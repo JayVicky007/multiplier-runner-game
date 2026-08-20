@@ -89,11 +89,14 @@ class Obstacle:
         self.base_size = rect.size
         self.lane = lane
         self.color = (225, 90, 90)
+        self.current_speed = 0.0
+        self.passed_player = False
         self._project_rect()
 
     def update(self, delta_time: float, scroll_speed: float) -> None:
         scale = depth_scale(self.world_y)
-        self.world_y += scroll_speed * (0.35 + 0.65 * scale) * delta_time
+        self.current_speed = scroll_speed * (0.35 + 0.65 * scale)
+        self.world_y += self.current_speed * delta_time
         self._project_rect()
 
     def _project_rect(self) -> None:
@@ -119,6 +122,22 @@ class PlayerLeader:
         blend = 1.0 - pow(2.718281828, -LEADER_FOLLOW_SPEED * delta_time)
         self.position.x += (target_x - self.position.x) * blend
         self.position.x = max(50.0, min(self.position.x, 750.0))
+
+    def update_keyboard(self, keys: pygame.key.ScancodeWrapper, delta_time: float) -> bool:
+        """Move with held left/right keys and report whether input was used."""
+        direction = int(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - int(
+            keys[pygame.K_LEFT] or keys[pygame.K_a]
+        )
+        if direction == 0:
+            return False
+        self.position.x += direction * 8.0 * 60.0 * delta_time
+        self.position.x = max(50.0, min(self.position.x, 750.0))
+        return True
+
+    def apply_push_back(self, scroll_speed: float, delta_time: float) -> None:
+        """Move with the obstacle while contact physically blocks the crowd."""
+        self.position.y += scroll_speed * delta_time
+        self.position.y = min(self.position.y, 550.0)
 
     def draw(self, surface: pygame.Surface) -> None:
         pygame.draw.circle(

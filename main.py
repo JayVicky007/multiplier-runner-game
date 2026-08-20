@@ -38,19 +38,47 @@ def run() -> None:
     level = LevelManager(font)
     running = True
     game_state = "MENU"
+    score = 0
+    distance_traveled = 0.0
+    high_score = 0
+    obstacle_contact_frames = 0
+    keyboard_control_active = False
 
     def reset_game() -> None:
-        nonlocal leader, units, game_state
+        nonlocal leader, units, game_state, score, distance_traveled
+        nonlocal obstacle_contact_frames, keyboard_control_active
         level.gates.clear()
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
+        level.reset_difficulty()
         leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.78))
         units = PlayerUnitGroup(leader.position, count=1)
+        score = 0
+        distance_traveled = 0.0
+        obstacle_contact_frames = 0
+        keyboard_control_active = False
         game_state = "PLAYING"
 
+    def return_to_menu() -> None:
+        nonlocal leader, units, game_state, score, distance_traveled
+        nonlocal obstacle_contact_frames, keyboard_control_active
+        level.gates.clear()
+        level.obstacles.clear()
+        level.spawn_cooldown_distance = 0.0
+        level.reset_difficulty()
+        leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.78))
+        units = PlayerUnitGroup(leader.position, count=12)
+        score = 0
+        distance_traveled = 0.0
+        obstacle_contact_frames = 0
+        keyboard_control_active = False
+        game_state = "MENU"
+
     def trigger_game_over() -> None:
-        nonlocal game_state
+        nonlocal game_state, high_score, obstacle_contact_frames
         units.units.clear()
+        obstacle_contact_frames = 0
+        high_score = max(high_score, score)
         print("Game Over")
         game_state = "GAME_OVER"
 
@@ -64,11 +92,24 @@ def run() -> None:
             elif event.type == pygame.KEYDOWN:
                 if game_state == "MENU" and event.key == pygame.K_SPACE:
                     game_state = "PLAYING"
+                elif game_state == "PLAYING" and event.key in (pygame.K_p, pygame.K_ESCAPE):
+                    game_state = "PAUSED"
+                elif game_state == "PAUSED" and event.key in (pygame.K_p, pygame.K_ESCAPE):
+                    game_state = "PLAYING"
+                elif game_state in ("PAUSED", "GAME_OVER") and event.key == pygame.K_m:
+                    return_to_menu()
                 elif game_state == "GAME_OVER" and event.key == pygame.K_r:
                     reset_game()
 
         if game_state == "PLAYING":
-            leader.update(pygame.mouse.get_pos()[0], delta_time)
+            distance_traveled += 1.0
+            score += 1 + (len(units.units) // 5)
+            high_score = max(high_score, score)
+            keys = pygame.key.get_pressed()
+            if leader.update_keyboard(keys, delta_time):
+                keyboard_control_active = True
+            elif not keyboard_control_active:
+                leader.update(pygame.mouse.get_pos()[0], delta_time)
             units.update(leader.position, delta_time)
             level.update(delta_time)
 
@@ -92,8 +133,31 @@ def run() -> None:
                 for unit in units.units
                 for obstacle in level.obstacles
             )
-            if leader_hit or unit_hit or not units.units:
+            obstacle_contact = leader_hit or unit_hit
+            if obstacle_contact:
+                obstacle_contact_frames += 1
+                push_speed = max(
+                    (obstacle.current_speed for obstacle in level.obstacles),
+                    default=0.0,
+                )
+                leader.apply_push_back(push_speed, delta_time)
+                if obstacle_contact_frames % 5 == 0:
+                    units.remove_units(1)
+            else:
+                obstacle_contact_frames = 0
+
+            if not units.units:
                 trigger_game_over()
+
+            if game_state == "PLAYING":
+                for obstacle in level.obstacles:
+                    if not obstacle.passed_player and obstacle.rect.top > leader.position.y:
+                        obstacle.passed_player = True
+                        close_pass = obstacle.rect.inflate(200, 0).collidepoint(leader.position)
+                        if close_pass and not obstacle_contact:
+                            score += 100
+                            high_score = max(high_score, score)
+                            print("NEAR MISS!")
 
         screen.fill(BACKGROUND_COLOR)
         if game_state == "MENU":
@@ -110,7 +174,23 @@ def run() -> None:
             crowd_text = font.render(str(len(units.units)), True, TEXT_COLOR)
             crowd_position = (int(leader.position.x), int(leader.position.y - 30))
             screen.blit(crowd_text, crowd_text.get_rect(center=crowd_position))
-            screen.blit(font.render("Move the mouse horizontally", True, TEXT_COLOR), (28, 28))
+            hud_text = font.render(
+                f"Distance: {int(distance_traveled)}m | Score: {score} (HI: {high_score})",
+                True,
+                TEXT_COLOR,
+            )
+            screen.blit(hud_text, (28, 28))
+        elif game_state == "PAUSED":
+            level.draw_road(screen)
+            draw_perspective_track(screen)
+            level.draw(screen)
+            units.draw(screen)
+            leader.draw(screen)
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 175))
+            screen.blit(overlay, (0, 0))
+            paused_text = menu_font.render("PAUSED - P to Resume, M for Main Menu", True, TEXT_COLOR)
+            screen.blit(paused_text, paused_text.get_rect(center=(SCREEN_WIDTH // 2, 300)))
         else:
             level.draw_road(screen)
             draw_perspective_track(screen)
@@ -121,9 +201,13 @@ def run() -> None:
             overlay.fill((0, 0, 0, 175))
             screen.blit(overlay, (0, 0))
             title = title_font.render("GAME OVER", True, TEXT_COLOR)
+            final_score = menu_font.render(f"Final Score: {score}", True, TEXT_COLOR)
+            best_score = menu_font.render(f"High Score: {high_score}", True, TEXT_COLOR)
             prompt = menu_font.render("Press R to Restart", True, TEXT_COLOR)
             screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 240)))
-            screen.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, 310)))
+            screen.blit(final_score, final_score.get_rect(center=(SCREEN_WIDTH // 2, 300)))
+            screen.blit(best_score, best_score.get_rect(center=(SCREEN_WIDTH // 2, 335)))
+            screen.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, 385)))
         pygame.display.flip()
 
     pygame.quit()

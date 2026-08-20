@@ -9,6 +9,8 @@ from sprites import HORIZON_Y, MathGate, Obstacle
 
 game_speed = 180.0
 MIN_SPAWN_SPACING = 300.0
+STARTING_GAME_SPEED = 180.0
+MAX_GAME_SPEED = STARTING_GAME_SPEED * 2.0
 
 
 class LevelManager:
@@ -19,10 +21,17 @@ class LevelManager:
         self.gates: list[MathGate] = []
         self.obstacles: list[Obstacle] = []
         self.spawn_cooldown_distance = 0.0
+        self.difficulty_time = 0.0
         self.next_pair_id = 0
         self.road_offset = 0.0
 
     def update(self, delta_time: float) -> None:
+        global game_speed
+        self.difficulty_time += delta_time
+        while self.difficulty_time >= 15.0:
+            self.difficulty_time -= 15.0
+            game_speed = min(game_speed * 1.08, MAX_GAME_SPEED)
+
         self.spawn_cooldown_distance -= game_speed * delta_time
         self.road_offset = (self.road_offset + game_speed * delta_time) % 60.0
 
@@ -82,3 +91,8 @@ class LevelManager:
             gate.draw(surface)
         for obstacle in self.obstacles:
             obstacle.draw(surface)
+
+    def reset_difficulty(self) -> None:
+        global game_speed
+        game_speed = STARTING_GAME_SPEED
+        self.difficulty_time = 0.0
