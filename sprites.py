@@ -125,9 +125,9 @@ class PlayerLeader:
 
     def update_keyboard(self, keys: pygame.key.ScancodeWrapper, delta_time: float) -> bool:
         """Move with held left/right keys and report whether input was used."""
-        direction = int(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - int(
-            keys[pygame.K_LEFT] or keys[pygame.K_a]
-        )
+        left_pressed = keys[pygame.K_LEFT] or keys[pygame.K_a]
+        right_pressed = keys[pygame.K_RIGHT] or keys[pygame.K_d]
+        direction = int(right_pressed) - int(left_pressed)
         if direction == 0:
             return False
         self.position.x += direction * 8.0 * 60.0 * delta_time

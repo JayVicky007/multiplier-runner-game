@@ -42,11 +42,11 @@ def run() -> None:
     distance_traveled = 0.0
     high_score = 0
     obstacle_contact_frames = 0
-    keyboard_control_active = False
+    control_mode = "KEYBOARD"
 
     def reset_game() -> None:
         nonlocal leader, units, game_state, score, distance_traveled
-        nonlocal obstacle_contact_frames, keyboard_control_active
+        nonlocal obstacle_contact_frames
         level.gates.clear()
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
@@ -56,12 +56,11 @@ def run() -> None:
         score = 0
         distance_traveled = 0.0
         obstacle_contact_frames = 0
-        keyboard_control_active = False
         game_state = "PLAYING"
 
     def return_to_menu() -> None:
         nonlocal leader, units, game_state, score, distance_traveled
-        nonlocal obstacle_contact_frames, keyboard_control_active
+        nonlocal obstacle_contact_frames
         level.gates.clear()
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
@@ -71,7 +70,6 @@ def run() -> None:
         score = 0
         distance_traveled = 0.0
         obstacle_contact_frames = 0
-        keyboard_control_active = False
         game_state = "MENU"
 
     def trigger_game_over() -> None:
@@ -90,8 +88,13 @@ def run() -> None:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
-                if game_state == "MENU" and event.key == pygame.K_SPACE:
-                    game_state = "PLAYING"
+                if game_state == "MENU":
+                    if event.key == pygame.K_k:
+                        control_mode = "KEYBOARD"
+                    elif event.key == pygame.K_m:
+                        control_mode = "MOUSE"
+                    elif event.key == pygame.K_SPACE:
+                        game_state = "PLAYING"
                 elif game_state == "PLAYING" and event.key in (pygame.K_p, pygame.K_ESCAPE):
                     game_state = "PAUSED"
                 elif game_state == "PAUSED" and event.key in (pygame.K_p, pygame.K_ESCAPE):
@@ -105,10 +108,9 @@ def run() -> None:
             distance_traveled += 1.0
             score += 1 + (len(units.units) // 5)
             high_score = max(high_score, score)
-            keys = pygame.key.get_pressed()
-            if leader.update_keyboard(keys, delta_time):
-                keyboard_control_active = True
-            elif not keyboard_control_active:
+            if control_mode == "KEYBOARD":
+                leader.update_keyboard(pygame.key.get_pressed(), delta_time)
+            elif control_mode == "MOUSE":
                 leader.update(pygame.mouse.get_pos()[0], delta_time)
             units.update(leader.position, delta_time)
             level.update(delta_time)
@@ -163,8 +165,14 @@ def run() -> None:
         if game_state == "MENU":
             title = title_font.render("MULTIPLIER RUNNER", True, TEXT_COLOR)
             prompt = menu_font.render("Press SPACE to Start", True, TEXT_COLOR)
+            controls = font.render(
+                f"CONTROLS: [K]EYBOARD or [M]OUSE (Active: {control_mode})",
+                True,
+                TEXT_COLOR,
+            )
             screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 220)))
             screen.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, 310)))
+            screen.blit(controls, controls.get_rect(center=(SCREEN_WIDTH // 2, 520)))
         elif game_state == "PLAYING":
             level.draw_road(screen)
             draw_perspective_track(screen)
