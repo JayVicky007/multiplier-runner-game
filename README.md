@@ -1,34 +1,67 @@
-Multiplier Runner Progress
-Built a lightweight Pygame runner using modular files: config.py, sprites.py, level.py, and main.py.
+## Multiplier Runner
 
-Implemented Features
-800x600 window running at 60 FPS
-Mouse and keyboard controls using Arrow keys or A/D
-Player boundary clamping between x=50 and x=750
-Vector-based crowd following
-Arithmetic gates with positive and negative effects
-Linked gate pairs preventing double collection
-Dynamic three-lane gate and obstacle
-2.5D perspective scaling with horizon-based movement
-V-shaped highway borders and lane projection
-Obstacles matching the visual size, shape, and red color of negative gates
-Continuous obstacle contact damage instead of instant death
-Push-back physics while contacting obstacles
-Game-over state with restart and main-menu navigation
-Pause/resume support using P or Escape
-Dynamic difficulty increasing every 15 seconds, capped at twice the starting speed
-Score, distance, horde multiplier, near-miss bonuses, and persistent high score
-Fixed HUD showing distance, score, and high score
-Main menu and game-over overlays
+A lightweight 2.5D Pygame runner built for simple geometry, low memory usage, and a stable 60 FPS update loop.
 
-Challenges and Solutions
-Perspective positioning: Static X coordinates caused objects to drift outside the highway. Objects now use lane values and vanishing-point projection.
-Gate and obstacle overlap: Separate spawn timers caused stacked objects. A shared 300-pixel spawn cooldown now separates every cluster.
-Gate ambiguity: Gate pairs now use two distinct lanes, with optional obstacles placed only in the remaining lane.
-Obstacle collision behavior: Per-unit deletion was replaced with continuous contact damage and leader push-back.
-State complexity: Menu, playing, paused, and game-over states were separated with explicit transitions and reset logic.
-Input compatibility: Keyboard movement was added while preserving mouse control.
-Validation: Compilation, diagnostics, headless smoke tests, collision tests, lane tests, and scoring tests were used throughout development.
-Perspective positioning: Static X coordinates caused objects to drift outside the highway. Objects now use lane values and vanishing-point projection.
-Gate and obstacle overlap: Separate spawn timers caused stacked objects. A shared 300-pixel spawn cooldown now separates every cluster.
-Gate ambiguity: Gate pairs now use two distinct lanes, with optional obstacles placed only in the remainin
+## Run
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+The game uses an 800x600 window.
+
+## Controls
+
+On the main menu:
+
+- Press `K` to select keyboard controls.
+- Press `M` to select mouse controls.
+- Press `Space` to start.
+
+Keyboard mode uses `Left Arrow`/`A` and `Right Arrow`/`D`. Movement is clamped to the highway boundaries at `x=50..750`.
+
+Mouse mode follows the mouse horizontally. The two input modes are isolated, so inactive input devices do not affect the player.
+
+During play:
+
+- Press `P` or `Escape` to pause or resume.
+- From the pause or game-over screen, press `M` to return to the main menu.
+- From the game-over screen, press `R` to restart the run.
+
+## Features
+
+- Modular architecture using `config.py`, `sprites.py`, `level.py`, and `main.py`.
+- Vector-based crowd following with arithmetic gates.
+- Positive and negative gates with linked pairs that prevent double collection.
+- Dynamic three-lane layouts with optional obstacles in the unused lane.
+- Shared 300-pixel spawn spacing to prevent stacked gate and obstacle rows.
+- Horizon-based 2.5D scaling, acceleration, and vanishing-point lane projection.
+- V-shaped highway borders.
+- Obstacles matching the size, shape, and red color of negative gates.
+- Continuous obstacle contact damage and leader push-back physics.
+- Main menu, pause, restart, and game-over states.
+- Score, distance, crowd multiplier, near-miss bonuses, and persistent high score.
+- Fixed HUD showing distance, score, and high score.
+- Difficulty increases by 8% every 15 seconds, capped at twice the starting speed.
+
+## Architecture
+
+### `config.py`
+
+Stores screen dimensions, FPS settings, colors, and shared display configuration.
+
+### `sprites.py`
+
+Contains the player leader, crowd units, math gates, obstacles, input movement, perspective scaling, and collision-related movement behavior.
+
+### `level.py`
+
+Owns world generation, lane selection, gate and obstacle clusters, scrolling, cleanup, spawn spacing, and difficulty progression.
+
+### `main.py`
+
+Runs the Pygame loop, state transitions, input selection, collisions, scoring, HUD rendering, pause behavior, and restart flow.
+
+## Validation
+
+The project has been checked with Python compilation, diagnostics, and headless smoke tests covering movement boundaries, lane projection, spawning spacing, gate arithmetic, obstacle collisions, scoring, and state transitions.
