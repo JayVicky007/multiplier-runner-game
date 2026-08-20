@@ -43,11 +43,16 @@ def run() -> None:
         nonlocal leader, units, game_state
         level.gates.clear()
         level.obstacles.clear()
-        level.spawn_timer = 0.0
-        level.obstacle_timer = 0.0
+        level.spawn_cooldown_distance = 0.0
         leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.78))
         units = PlayerUnitGroup(leader.position, count=1)
         game_state = "PLAYING"
+
+    def trigger_game_over() -> None:
+        nonlocal game_state
+        units.units.clear()
+        print("Game Over")
+        game_state = "GAME_OVER"
 
     while running:
         delta_time = clock.tick(FPS) / 1000.0
@@ -78,20 +83,17 @@ def run() -> None:
                     break
             level.gates[:] = [gate for gate in level.gates if gate.active]
 
-            remaining_units = []
-            for unit in units.units:
-                unit_hitbox = pygame.Rect(0, 0, 2 * 9, 2 * 9)
-                unit_hitbox.center = unit.position
-                if not any(
-                    obstacle.rect.inflate(18, 18).collidepoint(unit.position)
-                    for obstacle in level.obstacles
-                ):
-                    remaining_units.append(unit)
-            units.units[:] = remaining_units
-
-            if not units.units:
-                print("Game Over")
-                game_state = "GAME_OVER"
+            leader_hit = any(
+                obstacle.rect.inflate(2 * 18, 2 * 18).collidepoint(leader.position)
+                for obstacle in level.obstacles
+            )
+            unit_hit = any(
+                obstacle.rect.inflate(2 * 9, 2 * 9).collidepoint(unit.position)
+                for unit in units.units
+                for obstacle in level.obstacles
+            )
+            if leader_hit or unit_hit or not units.units:
+                trigger_game_over()
 
         screen.fill(BACKGROUND_COLOR)
         if game_state == "MENU":

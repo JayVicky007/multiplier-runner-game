@@ -8,7 +8,7 @@ from sprites import HORIZON_Y, MathGate, Obstacle
 
 
 game_speed = 180.0
-MIN_GATE_VERTICAL_DISTANCE = 200.0
+MIN_SPAWN_SPACING = 300.0
 
 
 class LevelManager:
@@ -18,16 +18,12 @@ class LevelManager:
         self.font = font
         self.gates: list[MathGate] = []
         self.obstacles: list[Obstacle] = []
-        self.spawn_timer = 0.0
-        self.spawn_interval = MIN_GATE_VERTICAL_DISTANCE / game_speed
+        self.spawn_cooldown_distance = 0.0
         self.next_pair_id = 0
-        self.obstacle_timer = 0.0
-        self.obstacle_interval = 1.1
         self.road_offset = 0.0
 
     def update(self, delta_time: float) -> None:
-        self.spawn_timer += delta_time
-        self.obstacle_timer += delta_time
+        self.spawn_cooldown_distance -= game_speed * delta_time
         self.road_offset = (self.road_offset + game_speed * delta_time) % 60.0
 
         for gate in self.gates:
@@ -39,12 +35,9 @@ class LevelManager:
             obstacle for obstacle in self.obstacles if obstacle.rect.y <= SCREEN_HEIGHT
         ]
 
-        if self.spawn_timer >= self.spawn_interval:
-            self.spawn_timer -= self.spawn_interval
+        if self.spawn_cooldown_distance <= 0.0:
             self.spawn_pair()
-        if self.obstacle_timer >= self.obstacle_interval:
-            self.obstacle_timer -= self.obstacle_interval
-            self.spawn_obstacle()
+            self.spawn_cooldown_distance = MIN_SPAWN_SPACING
 
     def spawn_pair(self) -> None:
         lane_width = 180
@@ -52,22 +45,29 @@ class LevelManager:
         y = int(HORIZON_Y)
         pair_id = self.next_pair_id
         self.next_pair_id += 1
-        left_rect = pygame.Rect(0, y, lane_width, gate_height)
-        right_rect = pygame.Rect(0, y, lane_width, gate_height)
+        gate_lanes = random.sample((-1, 0, 1), 2)
+        first_rect = pygame.Rect(0, y, lane_width, gate_height)
+        second_rect = pygame.Rect(0, y, lane_width, gate_height)
         left_value, right_value = (5, -3) if random.randrange(2) == 0 else (-3, 5)
         self.gates.extend(
             (
-                MathGate(left_rect, "add", left_value, self.font, pair_id, lane=-1),
-                MathGate(right_rect, "add", right_value, self.font, pair_id, lane=1),
+                MathGate(first_rect, "add", left_value, self.font, pair_id, lane=gate_lanes[0]),
+                MathGate(second_rect, "add", right_value, self.font, pair_id, lane=gate_lanes[1]),
             )
         )
 
+        if random.random() < 0.4:
+            empty_lane = ({-1, 0, 1} - set(gate_lanes)).pop()
+            self.obstacles.append(
+                Obstacle(pygame.Rect(0, y, lane_width, gate_height), lane=empty_lane)
+            )
+
     def spawn_obstacle(self) -> None:
         lane_width = 180
-        lane = random.randrange(2)
+        lane = random.choice((-1, 0, 1))
         x = 0
         y = int(HORIZON_Y)
-        self.obstacles.append(Obstacle(pygame.Rect(x, y, lane_width, 34), lane=-1 if lane == 0 else 1))
+        self.obstacles.append(Obstacle(pygame.Rect(x, y, lane_width, 64), lane=lane))
 
     def draw_road(self, surface: pygame.Surface) -> None:
         road_rect = pygame.Rect(16, 16, SCREEN_WIDTH - 32, SCREEN_HEIGHT - 32)

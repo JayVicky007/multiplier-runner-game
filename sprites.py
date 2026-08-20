@@ -88,7 +88,7 @@ class Obstacle:
         self.world_y = float(rect.y)
         self.base_size = rect.size
         self.lane = lane
-        self.color = (210, 58, 58)
+        self.color = (225, 90, 90)
         self._project_rect()
 
     def update(self, delta_time: float, scroll_speed: float) -> None:
@@ -105,7 +105,7 @@ class Obstacle:
         self.rect.center = (center_x, int(self.world_y))
 
     def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.rect(surface, self.color, self.rect, border_radius=4)
+        pygame.draw.rect(surface, self.color, self.rect, border_radius=6)
 
 
 class PlayerLeader:
