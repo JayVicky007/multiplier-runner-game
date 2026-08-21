@@ -18,7 +18,8 @@ from sprites import PlayerLeader, PlayerUnitGroup
 
 
 SHIELD_DURATION_FRAMES = 300
-CENTER_LANE_HALF_WIDTH = 90
+CENTER_LANE_HALF_WIDTH = 28
+FORK_STEERING_GRACE_DISTANCE = 120.0
 
 
 HIGH_SCORE_FILE = Path(__file__).with_name("high_score.txt")
@@ -40,7 +41,7 @@ def save_high_score(score: int) -> None:
 def draw_perspective_track(surface: pygame.Surface, level: LevelManager) -> None:
     """Draw either one road or two smoothly separating fork roads."""
     line_color = (110, 120, 126)
-    if level.track_phase == "FORK":
+    if level.track_phase in ("FORK", "MERGING"):
         progress = level.fork_progress
         left_horizon = (int(400 - 150 * progress), 150)
         right_horizon = (int(400 + 150 * progress), 150)
@@ -125,6 +126,7 @@ def run() -> None:
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                save_high_score(high_score)
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if game_state == "MENU":
@@ -148,8 +150,8 @@ def run() -> None:
                 shield_timer -= 1
             distance_traveled += 1.0
             score += 1 + (len(units.units) // 5)
-            high_score = max(high_score, score)
-            save_high_score(high_score)
+            if score > high_score:
+                high_score = score
             if control_mode == "KEYBOARD":
                 leader.update_keyboard(pygame.key.get_pressed(), delta_time)
             elif control_mode == "MOUSE":
@@ -161,7 +163,10 @@ def run() -> None:
                 center_fork_locked = False
             elif center_fork_locked:
                 leader.position.x = SCREEN_WIDTH / 2
-            elif abs(leader.position.x - SCREEN_WIDTH / 2) <= CENTER_LANE_HALF_WIDTH:
+            elif (
+                level.fork_progress * 500.0 >= FORK_STEERING_GRACE_DISTANCE
+                and abs(leader.position.x - SCREEN_WIDTH / 2) <= CENTER_LANE_HALF_WIDTH
+            ):
                 center_fork_locked = True
                 leader.position.x = SCREEN_WIDTH / 2
 
@@ -219,7 +224,6 @@ def run() -> None:
                         if close_pass and not obstacle_contact:
                             score += 100
                             high_score = max(high_score, score)
-                            save_high_score(high_score)
                             print("NEAR MISS!")
 
         screen.fill(BACKGROUND_COLOR)

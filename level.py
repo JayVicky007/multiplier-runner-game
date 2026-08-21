@@ -13,7 +13,9 @@ STARTING_GAME_SPEED = 180.0
 MAX_GAME_SPEED = STARTING_GAME_SPEED * 2.0
 FORK_START_INTERVAL = 1000.0
 FORK_DURATION = 500.0
+FORK_MERGE_DURATION = 240.0
 FORK_DIVIDER_SPACING = 50.0
+FORK_CENTER_GATE_WIDTH = 48
 
 
 class LevelManager:
@@ -40,17 +42,22 @@ class LevelManager:
             self.fork_start_distance = self.next_fork_distance
             self.next_fork_distance += FORK_START_INTERVAL
         fork_distance = distance_traveled - self.fork_start_distance
-        self.track_phase = (
-            "FORK"
-            if 0.0 <= fork_distance < FORK_DURATION
-            and self.fork_start_distance > 0.0
-            else "NORMAL"
-        )
-        self.fork_progress = (
-            max(0.0, min(fork_distance / FORK_DURATION, 1.0))
-            if self.track_phase == "FORK"
-            else 0.0
-        )
+        if self.fork_start_distance <= 0.0 or fork_distance < 0.0:
+            self.track_phase = "NORMAL"
+            self.fork_progress = 0.0
+        elif fork_distance < FORK_DURATION:
+            self.track_phase = "FORK"
+            self.fork_progress = max(0.0, min(fork_distance / FORK_DURATION, 1.0))
+        elif fork_distance < FORK_DURATION + FORK_MERGE_DURATION:
+            self.track_phase = "MERGING"
+            merge_distance = fork_distance - FORK_DURATION
+            self.fork_progress = 1.0 - max(
+                0.0,
+                min(merge_distance / FORK_MERGE_DURATION, 1.0),
+            )
+        else:
+            self.track_phase = "NORMAL"
+            self.fork_progress = 0.0
         if self.track_phase == "FORK" and not was_fork:
             self.divider_spawn_cooldown_distance = 0.0
         self.difficulty_time += delta_time
@@ -83,7 +90,7 @@ class LevelManager:
 
     def get_lane_vanishing_point(self, lane: int) -> float:
         """Return the smoothly moving vanishing point for a track lane."""
-        if self.track_phase != "FORK":
+        if self.track_phase not in ("FORK", "MERGING"):
             return 400.0
         if lane < 0:
             return 400.0 - 150.0 * self.fork_progress
@@ -97,7 +104,11 @@ class LevelManager:
         y = int(HORIZON_Y)
         pair_id = self.next_pair_id
         self.next_pair_id += 1
-        available_lanes = (-1, 1) if self.track_phase == "FORK" else (-1, 0, 1)
+        available_lanes = (
+            (-1, 1)
+            if self.track_phase in ("FORK", "MERGING")
+            else (-1, 0, 1)
+        )
         gate_lanes = random.sample(available_lanes, 2)
         first_rect = pygame.Rect(0, y, lane_width, gate_height)
         second_rect = pygame.Rect(0, y, lane_width, gate_height)
@@ -129,7 +140,7 @@ class LevelManager:
         if self.track_phase == "FORK":
             self.gates.append(
                 MathGate(
-                    pygame.Rect(0, y, lane_width, gate_height),
+                    pygame.Rect(0, y, FORK_CENTER_GATE_WIDTH, gate_height),
                     "add",
                     -3,
                     self.font,
@@ -137,7 +148,7 @@ class LevelManager:
                     lane=0,
                 )
             )
-        elif random.random() < 0.4:
+        elif self.track_phase == "NORMAL" and random.random() < 0.4:
             empty_lane = ({-1, 0, 1} - set(gate_lanes)).pop()
             self.obstacles.append(
                 Obstacle(pygame.Rect(0, y, lane_width, gate_height), lane=empty_lane)

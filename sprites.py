@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pygame
 import config
+import assets
+from assets import FRAME_SIZE, SHADOW_FRAME_COUNT
 
 from config import (
     LEADER_FOLLOW_SPEED,
@@ -24,12 +26,27 @@ PLAYER_DEPTH_Y = 550.0
 MIN_DEPTH_SCALE = 0.1
 VANISHING_POINT_X = 400.0
 LANE_HALF_WIDTH = 250.0
+SCALED_SHADOW_SPRITES: dict[tuple[int, int], pygame.Surface] = {}
 
 
 def depth_scale(y: float) -> float:
     """Map an object's world y position to a clamped pseudo-3D scale."""
     progress = (y - HORIZON_Y) / (PLAYER_DEPTH_Y - HORIZON_Y)
     return max(MIN_DEPTH_SCALE, min(progress, 1.0))
+
+
+def get_scaled_shadow_sprite(frame_index: int, size: int) -> pygame.Surface:
+    """Return a cached perspective-scaled shadow frame."""
+    cache_key = (frame_index, size)
+    if cache_key not in SCALED_SHADOW_SPRITES:
+        frame = assets.initialize_shadow_frames()[frame_index]
+        scaled_frame = pygame.transform.scale(frame, (size, size))
+        SCALED_SHADOW_SPRITES[cache_key] = (
+            scaled_frame.convert_alpha()
+            if pygame.display.get_surface() is not None
+            else scaled_frame
+        )
+    return SCALED_SHADOW_SPRITES[cache_key]
 
 
 class MathGate:
@@ -80,14 +97,15 @@ class MathGate:
 
     def draw(self, surface: pygame.Surface) -> None:
         pygame.draw.rect(surface, self.color, self.rect, border_radius=6)
+        if self.gate_type == "shield":
+            return
         scale = depth_scale(self.world_y)
         text_size = (
             max(1, int(self.text_surface.get_width() * scale)),
             max(1, int(self.text_surface.get_height() * scale)),
         )
         scaled_text = pygame.transform.smoothscale(self.text_surface, text_size)
-        if self.gate_type != "shield":
-            surface.blit(scaled_text, scaled_text.get_rect(center=self.rect.center))
+        surface.blit(scaled_text, scaled_text.get_rect(center=self.rect.center))
 
 
 class Obstacle:
@@ -100,11 +118,14 @@ class Obstacle:
         self.lane = lane
         self.vanishing_point_x = VANISHING_POINT_X
         self.color = (225, 90, 90)
+        self.animation_frame = 0
         self.current_speed = 0.0
         self.passed_player = False
         self._project_rect()
 
     def update(self, delta_time: float, scroll_speed: float) -> None:
+        self.animation_frame = (self.animation_frame + 1) % 2
+        self.color = (225, 90, 90) if self.animation_frame == 0 else (255, 125, 105)
         scale = depth_scale(self.world_y)
         self.current_speed = scroll_speed * (0.35 + 0.65 * scale)
         self.world_y += self.current_speed * delta_time
@@ -179,11 +200,17 @@ class PlayerUnit:
     def __init__(self, position: pygame.Vector2, offset: pygame.Vector2) -> None:
         self.position = pygame.Vector2(position)
         self.offset = pygame.Vector2(offset)
+        self.animation_frame = 0
+        self.animation_timer = 0
 
     def update(self, leader_position: pygame.Vector2, delta_time: float) -> None:
         target = leader_position + self.offset
         blend = 1.0 - pow(2.718281828, -UNIT_FOLLOW_SPEED * delta_time)
         self.position += (target - self.position) * blend
+        self.animation_timer += 1
+        if self.animation_timer >= 6:
+            self.animation_timer = 0
+            self.animation_frame = (self.animation_frame + 1) % SHADOW_FRAME_COUNT
 
     def draw(
         self,
@@ -192,26 +219,16 @@ class PlayerUnit:
         aura_phase: int = 0,
     ) -> None:
         colors = class_data()
-        pygame.draw.circle(surface, colors["crowd_color"], self.position, UNIT_RADIUS)
-        pygame.draw.circle(
-            surface,
-            colors["smoke_color"],
-            self.position + pygame.Vector2(-3, -UNIT_RADIUS - 2),
-            max(2, UNIT_RADIUS // 3),
-        )
-        pygame.draw.circle(
-            surface,
-            colors["aura_color"] if shielded else colors["crowd_outline_color"],
-            self.position,
-            UNIT_RADIUS,
-            width=2,
-        )
+        scale = depth_scale(self.position.y)
+        sprite_size = max(1, int(FRAME_SIZE * scale))
+        scaled_sprite = get_scaled_shadow_sprite(self.animation_frame, sprite_size)
+        surface.blit(scaled_sprite, scaled_sprite.get_rect(center=self.position))
         if shielded:
             pygame.draw.circle(
                 surface,
                 colors["aura_color"],
                 self.position,
-                UNIT_RADIUS + 3 + (aura_phase % 2) * 2,
+                max(2, sprite_size // 2) + 3 + (aura_phase % 2) * 2,
                 width=2,
             )
 
