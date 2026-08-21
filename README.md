@@ -41,9 +41,9 @@ The two input modes are isolated, so inactive input devices do not affect the pl
 - Modular architecture using `config.py`, `sprites.py`, `level.py`, and `main.py`.
 - Vector-based crowd following with arithmetic gates.
 - Positive and negative gates with linked pairs that prevent double collection.
-- Rare neon-blue `SHIELD` gates that grant five seconds of protection.
+- Rare purple `RULER'S AUTHORITY` gates that grant five seconds of protection.
 - Shield protection absorbs one obstacle or red-gate hit without reducing the crowd.
-- Cyan shield outlines and an HUD countdown show when the shield is active.
+- A flashing purple aura and HUD countdown show when the shield is active.
 - The highway forks every 1000m for 500m, with separate left and right vanishing points.
 - Fork sections add a center route with a continuous divider and red gates.
 - Entering the center route locks the leader there until the fork ends; center red gates deal normal crowd damage.
@@ -75,6 +75,27 @@ Owns world generation, lane selection, gate and obstacle clusters, scrolling, fo
 ### `main.py`
 
 Runs the Pygame loop, state transitions, input selection, shield timing, branching track rendering, collisions, scoring, HUD rendering, pause behavior, and restart flow.
+
+## Implementation Notes
+
+### Hurdles
+
+- Shield protection initially covered obstacles but allowed red gates to reduce the crowd.
+- Center-fork divider gaps allowed the player to travel through the middle route.
+- The first center-route rule caused instant death, which made the fork too punitive.
+- Fork rendering initially left stale single-track drawing code and did not project obstacles to branch vanishing points.
+- High scores were held only in memory, so they disappeared when the program was launched again.
+- Early patching introduced indentation and context errors during the fork implementation.
+
+### Corrections
+
+- Shield collision handling now absorbs both obstacles and negative red gates, consuming the shield without crowd damage.
+- Center dividers use a tighter independent spawn cadence to keep the route blocked.
+- The center route now locks the leader in place until the fork ends instead of causing instant death.
+- Center red gates remain available and apply their normal crowd reduction.
+- Gates and obstacles now follow the active branch vanishing points, and duplicate track rendering was removed.
+- High scores load from and save to `high_score.txt` across game sessions.
+- Compilation, diagnostics, and focused headless smoke tests were used to catch and correct integration issues.
 
 ## Validation
 
