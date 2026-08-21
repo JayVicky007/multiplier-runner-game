@@ -11,6 +11,9 @@ game_speed = 180.0
 MIN_SPAWN_SPACING = 300.0
 STARTING_GAME_SPEED = 180.0
 MAX_GAME_SPEED = STARTING_GAME_SPEED * 2.0
+FORK_START_INTERVAL = 1000.0
+FORK_DURATION = 500.0
+FORK_DIVIDER_SPACING = 50.0
 
 
 class LevelManager:
@@ -21,19 +24,46 @@ class LevelManager:
         self.gates: list[MathGate] = []
         self.obstacles: list[Obstacle] = []
         self.spawn_cooldown_distance = 0.0
+        self.divider_spawn_cooldown_distance = 0.0
         self.difficulty_time = 0.0
         self.next_pair_id = 0
         self.road_offset = 0.0
+        self.next_fork_distance = FORK_START_INTERVAL
+        self.fork_start_distance = 0.0
+        self.track_phase = "NORMAL"
+        self.fork_progress = 0.0
 
-    def update(self, delta_time: float) -> None:
+    def update(self, delta_time: float, distance_traveled: float) -> None:
         global game_speed
+        was_fork = self.track_phase == "FORK"
+        while distance_traveled >= self.next_fork_distance:
+            self.fork_start_distance = self.next_fork_distance
+            self.next_fork_distance += FORK_START_INTERVAL
+        fork_distance = distance_traveled - self.fork_start_distance
+        self.track_phase = (
+            "FORK"
+            if 0.0 <= fork_distance < FORK_DURATION
+            and self.fork_start_distance > 0.0
+            else "NORMAL"
+        )
+        self.fork_progress = (
+            max(0.0, min(fork_distance / FORK_DURATION, 1.0))
+            if self.track_phase == "FORK"
+            else 0.0
+        )
+        if self.track_phase == "FORK" and not was_fork:
+            self.divider_spawn_cooldown_distance = 0.0
         self.difficulty_time += delta_time
         while self.difficulty_time >= 15.0:
             self.difficulty_time -= 15.0
             game_speed = min(game_speed * 1.08, MAX_GAME_SPEED)
 
         self.spawn_cooldown_distance -= game_speed * delta_time
+        self.divider_spawn_cooldown_distance -= game_speed * delta_time
         self.road_offset = (self.road_offset + game_speed * delta_time) % 60.0
+
+        for item in (*self.gates, *self.obstacles):
+            item.vanishing_point_x = self.get_lane_vanishing_point(item.lane)
 
         for gate in self.gates:
             gate.update(delta_time, game_speed)
@@ -47,6 +77,19 @@ class LevelManager:
         if self.spawn_cooldown_distance <= 0.0:
             self.spawn_pair()
             self.spawn_cooldown_distance = MIN_SPAWN_SPACING
+        if self.track_phase == "FORK" and self.divider_spawn_cooldown_distance <= 0.0:
+            self.spawn_obstacle(lane=0)
+            self.divider_spawn_cooldown_distance = FORK_DIVIDER_SPACING
+
+    def get_lane_vanishing_point(self, lane: int) -> float:
+        """Return the smoothly moving vanishing point for a track lane."""
+        if self.track_phase != "FORK":
+            return 400.0
+        if lane < 0:
+            return 400.0 - 150.0 * self.fork_progress
+        if lane > 0:
+            return 400.0 + 150.0 * self.fork_progress
+        return 400.0
 
     def spawn_pair(self) -> None:
         lane_width = 180
@@ -54,26 +97,55 @@ class LevelManager:
         y = int(HORIZON_Y)
         pair_id = self.next_pair_id
         self.next_pair_id += 1
-        gate_lanes = random.sample((-1, 0, 1), 2)
+        available_lanes = (-1, 1) if self.track_phase == "FORK" else (-1, 0, 1)
+        gate_lanes = random.sample(available_lanes, 2)
         first_rect = pygame.Rect(0, y, lane_width, gate_height)
         second_rect = pygame.Rect(0, y, lane_width, gate_height)
         left_value, right_value = (5, -3) if random.randrange(2) == 0 else (-3, 5)
+        shield_lane = random.choice((0, 1)) if random.random() < 0.1 else None
+        left_gate_type = "shield" if shield_lane == 0 else "add"
+        right_gate_type = "shield" if shield_lane == 1 else "add"
         self.gates.extend(
             (
-                MathGate(first_rect, "add", left_value, self.font, pair_id, lane=gate_lanes[0]),
-                MathGate(second_rect, "add", right_value, self.font, pair_id, lane=gate_lanes[1]),
+                MathGate(
+                    first_rect,
+                    left_gate_type,
+                    0 if left_gate_type == "shield" else left_value,
+                    self.font,
+                    pair_id,
+                    lane=gate_lanes[0],
+                ),
+                MathGate(
+                    second_rect,
+                    right_gate_type,
+                    0 if right_gate_type == "shield" else right_value,
+                    self.font,
+                    pair_id,
+                    lane=gate_lanes[1],
+                ),
             )
         )
 
-        if random.random() < 0.4:
+        if self.track_phase == "FORK":
+            self.gates.append(
+                MathGate(
+                    pygame.Rect(0, y, lane_width, gate_height),
+                    "add",
+                    -3,
+                    self.font,
+                    pair_id,
+                    lane=0,
+                )
+            )
+        elif random.random() < 0.4:
             empty_lane = ({-1, 0, 1} - set(gate_lanes)).pop()
             self.obstacles.append(
                 Obstacle(pygame.Rect(0, y, lane_width, gate_height), lane=empty_lane)
             )
 
-    def spawn_obstacle(self) -> None:
+    def spawn_obstacle(self, lane: int | None = None) -> None:
         lane_width = 180
-        lane = random.choice((-1, 0, 1))
+        lane = random.choice((-1, 0, 1)) if lane is None else lane
         x = 0
         y = int(HORIZON_Y)
         self.obstacles.append(Obstacle(pygame.Rect(x, y, lane_width, 64), lane=lane))
@@ -96,3 +168,8 @@ class LevelManager:
         global game_speed
         game_speed = STARTING_GAME_SPEED
         self.difficulty_time = 0.0
+        self.next_fork_distance = FORK_START_INTERVAL
+        self.fork_start_distance = 0.0
+        self.track_phase = "NORMAL"
+        self.fork_progress = 0.0
+        self.divider_spawn_cooldown_distance = 0.0

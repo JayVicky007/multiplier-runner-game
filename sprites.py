@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import pygame
+import config
 
 from config import (
-    LEADER_COLOR,
     LEADER_FOLLOW_SPEED,
     LEADER_RADIUS,
     SCREEN_WIDTH,
-    UNIT_COLOR,
     UNIT_FOLLOW_SPEED,
-    UNIT_OUTLINE_COLOR,
     UNIT_RADIUS,
 )
+
+
+def class_data() -> dict:
+    """Return the profile for the currently active class."""
+    return config.CLASS_DATA[config.active_class]
 
 
 HORIZON_Y = 150.0
@@ -49,11 +52,17 @@ class MathGate:
         self.pair_id = pair_id
         self.lane = lane
         self.active = True
-        self.color = (76, 201, 120) if value >= 0 else (225, 90, 90)
-        symbol = "+" if gate_type == "add" and value >= 0 else ""
+        self.vanishing_point_x = VANISHING_POINT_X
+        self.color = class_data()["shield_color"] if gate_type == "shield" else (
+            (76, 201, 120) if value >= 0 else (225, 90, 90)
+        )
+        symbol = "" if gate_type == "shield" else ""
+        if gate_type == "add" and value >= 0:
+            symbol = "+"
         if gate_type == "multiply":
             symbol = "x"
-        self.text_surface = font.render(f"{symbol}{value}", True, (255, 255, 255))
+        text = "" if gate_type == "shield" else f"{symbol}{value}"
+        self.text_surface = font.render(text, True, class_data()["text_color"])
         self._project_rect()
 
     def update(self, delta_time: float, scroll_speed: float) -> None:
@@ -65,7 +74,7 @@ class MathGate:
         scale = depth_scale(self.world_y)
         width = max(1, int(self.base_size[0] * scale))
         height = max(1, int(self.base_size[1] * scale))
-        center_x = VANISHING_POINT_X + self.lane * LANE_HALF_WIDTH * scale
+        center_x = self.vanishing_point_x + self.lane * LANE_HALF_WIDTH * scale
         self.rect = pygame.Rect(0, 0, width, height)
         self.rect.center = (center_x, int(self.world_y))
 
@@ -77,7 +86,8 @@ class MathGate:
             max(1, int(self.text_surface.get_height() * scale)),
         )
         scaled_text = pygame.transform.smoothscale(self.text_surface, text_size)
-        surface.blit(scaled_text, scaled_text.get_rect(center=self.rect.center))
+        if self.gate_type != "shield":
+            surface.blit(scaled_text, scaled_text.get_rect(center=self.rect.center))
 
 
 class Obstacle:
@@ -88,6 +98,7 @@ class Obstacle:
         self.world_y = float(rect.y)
         self.base_size = rect.size
         self.lane = lane
+        self.vanishing_point_x = VANISHING_POINT_X
         self.color = (225, 90, 90)
         self.current_speed = 0.0
         self.passed_player = False
@@ -103,7 +114,7 @@ class Obstacle:
         scale = depth_scale(self.world_y)
         width = max(1, int(self.base_size[0] * scale))
         height = max(1, int(self.base_size[1] * scale))
-        center_x = VANISHING_POINT_X + self.lane * LANE_HALF_WIDTH * scale
+        center_x = self.vanishing_point_x + self.lane * LANE_HALF_WIDTH * scale
         self.rect = pygame.Rect(0, 0, width, height)
         self.rect.center = (center_x, int(self.world_y))
 
@@ -139,13 +150,27 @@ class PlayerLeader:
         self.position.y += scroll_speed * delta_time
         self.position.y = min(self.position.y, 550.0)
 
-    def draw(self, surface: pygame.Surface) -> None:
+    def draw(
+        self,
+        surface: pygame.Surface,
+        shielded: bool = False,
+        aura_phase: int = 0,
+    ) -> None:
+        colors = class_data()
         pygame.draw.circle(
             surface,
-            LEADER_COLOR,
+            colors["leader_color"],
             self.position,
             LEADER_RADIUS,
         )
+        if shielded:
+            pygame.draw.circle(
+                surface,
+                colors["shield_color"],
+                self.position,
+                LEADER_RADIUS + 5 + (aura_phase % 2) * 3,
+                width=3,
+            )
 
 
 class PlayerUnit:
@@ -160,15 +185,35 @@ class PlayerUnit:
         blend = 1.0 - pow(2.718281828, -UNIT_FOLLOW_SPEED * delta_time)
         self.position += (target - self.position) * blend
 
-    def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.circle(surface, UNIT_COLOR, self.position, UNIT_RADIUS)
+    def draw(
+        self,
+        surface: pygame.Surface,
+        shielded: bool = False,
+        aura_phase: int = 0,
+    ) -> None:
+        colors = class_data()
+        pygame.draw.circle(surface, colors["crowd_color"], self.position, UNIT_RADIUS)
         pygame.draw.circle(
             surface,
-            UNIT_OUTLINE_COLOR,
+            colors["smoke_color"],
+            self.position + pygame.Vector2(-3, -UNIT_RADIUS - 2),
+            max(2, UNIT_RADIUS // 3),
+        )
+        pygame.draw.circle(
+            surface,
+            colors["aura_color"] if shielded else colors["crowd_outline_color"],
             self.position,
             UNIT_RADIUS,
             width=2,
         )
+        if shielded:
+            pygame.draw.circle(
+                surface,
+                colors["aura_color"],
+                self.position,
+                UNIT_RADIUS + 3 + (aura_phase % 2) * 2,
+                width=2,
+            )
 
 
 class PlayerUnitGroup:
@@ -208,6 +253,11 @@ class PlayerUnitGroup:
         elif gate.gate_type == "multiply" and gate.value > 1:
             self.add_units(len(self.units) * (gate.value - 1), leader_position)
 
-    def draw(self, surface: pygame.Surface) -> None:
+    def draw(
+        self,
+        surface: pygame.Surface,
+        shielded: bool = False,
+        aura_phase: int = 0,
+    ) -> None:
         for unit in self.units:
-            unit.draw(surface)
+            unit.draw(surface, shielded=shielded, aura_phase=aura_phase)

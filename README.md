@@ -12,17 +12,25 @@ The game uses an 800x600 window.
 
 ## Controls
 
-On the main menu:
+### Main Menu
 
 - Press `K` to select keyboard controls.
 - Press `M` to select mouse controls.
 - Press `Space` to start.
 
-Keyboard mode uses `Left Arrow`/`A` and `Right Arrow`/`D`. Movement is clamped to the highway boundaries at `x=50..750`.
+### Keyboard Mode
 
-Mouse mode follows the mouse horizontally. The two input modes are isolated, so inactive input devices do not affect the player.
+Keyboard mode uses `Left Arrow`/`A` and `Right Arrow`/`D`.
 
-During play:
+Movement is clamped to the highway boundaries at `x=50..750`.
+
+### Mouse Mode
+
+Mouse mode follows the mouse horizontally.
+
+The two input modes are isolated, so inactive input devices do not affect the player.
+
+### During Play
 
 - Press `P` or `Escape` to pause or resume.
 - From the pause or game-over screen, press `M` to return to the main menu.
@@ -33,6 +41,12 @@ During play:
 - Modular architecture using `config.py`, `sprites.py`, `level.py`, and `main.py`.
 - Vector-based crowd following with arithmetic gates.
 - Positive and negative gates with linked pairs that prevent double collection.
+- Rare neon-blue `SHIELD` gates that grant five seconds of protection.
+- Shield protection absorbs one obstacle or red-gate hit without reducing the crowd.
+- Cyan shield outlines and an HUD countdown show when the shield is active.
+- The highway forks every 1000m for 500m, with separate left and right vanishing points.
+- Fork sections add a center route with a continuous divider and red gates.
+- Entering the center route locks the leader there until the fork ends; center red gates deal normal crowd damage.
 - Dynamic three-lane layouts with optional obstacles in the unused lane.
 - Shared 300-pixel spawn spacing to prevent stacked gate and obstacle rows.
 - Horizon-based 2.5D scaling, acceleration, and vanishing-point lane projection.
@@ -52,15 +66,15 @@ Stores screen dimensions, FPS settings, colors, and shared display configuration
 
 ### `sprites.py`
 
-Contains the player leader, crowd units, math gates, obstacles, input movement, perspective scaling, and collision-related movement behavior.
+Contains the player leader, crowd units, math gates, shield visuals, obstacles, input movement, perspective scaling, and collision-related movement behavior.
 
 ### `level.py`
 
-Owns world generation, lane selection, gate and obstacle clusters, scrolling, cleanup, spawn spacing, and difficulty progression.
+Owns world generation, lane selection, gate and obstacle clusters, scrolling, fork phases, cleanup, spawn spacing, and difficulty progression.
 
 ### `main.py`
 
-Runs the Pygame loop, state transitions, input selection, collisions, scoring, HUD rendering, pause behavior, and restart flow.
+Runs the Pygame loop, state transitions, input selection, shield timing, branching track rendering, collisions, scoring, HUD rendering, pause behavior, and restart flow.
 
 ## Validation
 

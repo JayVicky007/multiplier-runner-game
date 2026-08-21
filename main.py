@@ -1,13 +1,15 @@
 """Main loop for the Multiplier Runner."""
 
+from pathlib import Path
+
 import pygame
+import config
 
 from config import (
     BACKGROUND_COLOR,
     FPS,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
-    TEXT_COLOR,
     WINDOW_TITLE,
     create_window,
 )
@@ -15,13 +17,41 @@ from level import LevelManager
 from sprites import PlayerLeader, PlayerUnitGroup
 
 
-def draw_perspective_track(surface: pygame.Surface) -> None:
-    """Draw road edges converging at the horizon vanishing point."""
+SHIELD_DURATION_FRAMES = 300
+CENTER_LANE_HALF_WIDTH = 90
+
+
+HIGH_SCORE_FILE = Path(__file__).with_name("high_score.txt")
+
+
+def load_high_score() -> int:
+    """Load the best score from the previous game session."""
+    try:
+        return max(0, int(HIGH_SCORE_FILE.read_text(encoding="ascii").strip()))
+    except (FileNotFoundError, ValueError):
+        return 0
+
+
+def save_high_score(score: int) -> None:
+    """Persist the best score for future game sessions."""
+    HIGH_SCORE_FILE.write_text(str(score), encoding="ascii")
+
+
+def draw_perspective_track(surface: pygame.Surface, level: LevelManager) -> None:
+    """Draw either one road or two smoothly separating fork roads."""
+    line_color = (110, 120, 126)
+    if level.track_phase == "FORK":
+        progress = level.fork_progress
+        left_horizon = (int(400 - 150 * progress), 150)
+        right_horizon = (int(400 + 150 * progress), 150)
+        pygame.draw.line(surface, line_color, left_horizon, (50, SCREEN_HEIGHT), width=4)
+        pygame.draw.line(surface, line_color, left_horizon, (400, SCREEN_HEIGHT), width=4)
+        pygame.draw.line(surface, line_color, right_horizon, (400, SCREEN_HEIGHT), width=4)
+        pygame.draw.line(surface, line_color, right_horizon, (SCREEN_WIDTH - 50, SCREEN_HEIGHT), width=4)
+        return
     horizon = (SCREEN_WIDTH // 2, 150)
-    left_bottom = (50, SCREEN_HEIGHT)
-    right_bottom = (SCREEN_WIDTH - 50, SCREEN_HEIGHT)
-    pygame.draw.line(surface, (110, 120, 126), horizon, left_bottom, width=4)
-    pygame.draw.line(surface, (110, 120, 126), horizon, right_bottom, width=4)
+    pygame.draw.line(surface, line_color, horizon, (50, SCREEN_HEIGHT), width=4)
+    pygame.draw.line(surface, line_color, horizon, (SCREEN_WIDTH - 50, SCREEN_HEIGHT), width=4)
 
 
 def run() -> None:
@@ -40,12 +70,15 @@ def run() -> None:
     game_state = "MENU"
     score = 0
     distance_traveled = 0.0
-    high_score = 0
+    high_score = load_high_score()
     obstacle_contact_frames = 0
+    shield_timer = 0
+    center_fork_locked = False
     control_mode = "KEYBOARD"
 
     def reset_game() -> None:
-        nonlocal leader, units, game_state, score, distance_traveled
+        nonlocal leader, units, game_state, score, distance_traveled, shield_timer
+        nonlocal center_fork_locked
         nonlocal obstacle_contact_frames
         level.gates.clear()
         level.obstacles.clear()
@@ -56,10 +89,13 @@ def run() -> None:
         score = 0
         distance_traveled = 0.0
         obstacle_contact_frames = 0
+        shield_timer = 0
+        center_fork_locked = False
         game_state = "PLAYING"
 
     def return_to_menu() -> None:
-        nonlocal leader, units, game_state, score, distance_traveled
+        nonlocal leader, units, game_state, score, distance_traveled, shield_timer
+        nonlocal center_fork_locked
         nonlocal obstacle_contact_frames
         level.gates.clear()
         level.obstacles.clear()
@@ -70,6 +106,8 @@ def run() -> None:
         score = 0
         distance_traveled = 0.0
         obstacle_contact_frames = 0
+        shield_timer = 0
+        center_fork_locked = False
         game_state = "MENU"
 
     def trigger_game_over() -> None:
@@ -77,6 +115,7 @@ def run() -> None:
         units.units.clear()
         obstacle_contact_frames = 0
         high_score = max(high_score, score)
+        save_high_score(high_score)
         print("Game Over")
         game_state = "GAME_OVER"
 
@@ -105,38 +144,59 @@ def run() -> None:
                     reset_game()
 
         if game_state == "PLAYING":
+            if shield_timer > 0:
+                shield_timer -= 1
             distance_traveled += 1.0
             score += 1 + (len(units.units) // 5)
             high_score = max(high_score, score)
+            save_high_score(high_score)
             if control_mode == "KEYBOARD":
                 leader.update_keyboard(pygame.key.get_pressed(), delta_time)
             elif control_mode == "MOUSE":
                 leader.update(pygame.mouse.get_pos()[0], delta_time)
             units.update(leader.position, delta_time)
-            level.update(delta_time)
+            level.update(delta_time, distance_traveled)
+
+            if level.track_phase != "FORK":
+                center_fork_locked = False
+            elif center_fork_locked:
+                leader.position.x = SCREEN_WIDTH / 2
+            elif abs(leader.position.x - SCREEN_WIDTH / 2) <= CENTER_LANE_HALF_WIDTH:
+                center_fork_locked = True
+                leader.position.x = SCREEN_WIDTH / 2
 
             leader_hitbox = pygame.Rect(0, 0, 2 * 18, 2 * 18)
             leader_hitbox.center = leader.position
             for gate in level.gates:
                 if gate.active and leader_hitbox.colliderect(gate.rect):
-                    units.apply_gate(gate, leader.position)
+                    if gate.gate_type == "shield":
+                        shield_timer = SHIELD_DURATION_FRAMES
+                    elif gate.value < 0 and shield_timer > 0:
+                        shield_timer = 0
+                    else:
+                        units.apply_gate(gate, leader.position)
                     for paired_gate in level.gates:
                         if paired_gate.pair_id == gate.pair_id:
                             paired_gate.active = False
                     break
             level.gates[:] = [gate for gate in level.gates if gate.active]
 
-            leader_hit = any(
-                obstacle.rect.inflate(2 * 18, 2 * 18).collidepoint(leader.position)
+            collided_obstacles = [
+                obstacle
                 for obstacle in level.obstacles
-            )
-            unit_hit = any(
-                obstacle.rect.inflate(2 * 9, 2 * 9).collidepoint(unit.position)
-                for unit in units.units
-                for obstacle in level.obstacles
-            )
-            obstacle_contact = leader_hit or unit_hit
-            if obstacle_contact:
+                if obstacle.rect.inflate(2 * 18, 2 * 18).collidepoint(leader.position)
+                or any(
+                    obstacle.rect.inflate(2 * 9, 2 * 9).collidepoint(unit.position)
+                    for unit in units.units
+                )
+            ]
+            obstacle_contact = bool(collided_obstacles)
+            if shield_timer > 0 and collided_obstacles:
+                level.obstacles.remove(collided_obstacles[0])
+                shield_timer = 0
+                obstacle_contact = False
+                obstacle_contact_frames = 0
+            elif obstacle_contact:
                 obstacle_contact_frames += 1
                 push_speed = max(
                     (obstacle.current_speed for obstacle in level.obstacles),
@@ -148,7 +208,7 @@ def run() -> None:
             else:
                 obstacle_contact_frames = 0
 
-            if not units.units:
+            if not units.units and game_state == "PLAYING":
                 trigger_game_over()
 
             if game_state == "PLAYING":
@@ -159,59 +219,80 @@ def run() -> None:
                         if close_pass and not obstacle_contact:
                             score += 100
                             high_score = max(high_score, score)
+                            save_high_score(high_score)
                             print("NEAR MISS!")
 
         screen.fill(BACKGROUND_COLOR)
+        profile = config.get_active_class_data()
         if game_state == "MENU":
-            title = title_font.render("MULTIPLIER RUNNER", True, TEXT_COLOR)
-            prompt = menu_font.render("Press SPACE to Start", True, TEXT_COLOR)
+            title = title_font.render("MULTIPLIER RUNNER", True, profile["text_color"])
+            prompt = menu_font.render("Press SPACE to Start", True, profile["text_color"])
             controls = font.render(
                 f"CONTROLS: [K]EYBOARD or [M]OUSE (Active: {control_mode})",
                 True,
-                TEXT_COLOR,
+                profile["text_color"],
             )
             screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 220)))
             screen.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, 310)))
             screen.blit(controls, controls.get_rect(center=(SCREEN_WIDTH // 2, 520)))
         elif game_state == "PLAYING":
+            aura_phase = shield_timer // 6
             level.draw_road(screen)
-            draw_perspective_track(screen)
+            draw_perspective_track(screen, level)
             level.draw(screen)
-            units.draw(screen)
-            leader.draw(screen)
-            crowd_text = font.render(str(len(units.units)), True, TEXT_COLOR)
+            units.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
+            leader.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
+            crowd_text = font.render(
+                f"Shadows: {len(units.units)}",
+                True,
+                profile["aura_color"],
+            )
             crowd_position = (int(leader.position.x), int(leader.position.y - 30))
             screen.blit(crowd_text, crowd_text.get_rect(center=crowd_position))
             hud_text = font.render(
                 f"Distance: {int(distance_traveled)}m | Score: {score} (HI: {high_score})",
                 True,
-                TEXT_COLOR,
+                profile["text_color"],
             )
             screen.blit(hud_text, (28, 28))
+            if shield_timer > 0:
+                shield_text = font.render(
+                    f"{config.CLASS_DATA[config.active_class]['shield_name'].upper()} ACTIVE: "
+                    f"{shield_timer / FPS:.1f}s",
+                    True,
+                    profile["shield_color"],
+                )
+                screen.blit(shield_text, (28, 52))
         elif game_state == "PAUSED":
+            aura_phase = shield_timer // 6
             level.draw_road(screen)
-            draw_perspective_track(screen)
+            draw_perspective_track(screen, level)
             level.draw(screen)
-            units.draw(screen)
-            leader.draw(screen)
+            units.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
+            leader.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 175))
             screen.blit(overlay, (0, 0))
-            paused_text = menu_font.render("PAUSED - P to Resume, M for Main Menu", True, TEXT_COLOR)
+            paused_text = menu_font.render(
+                "PAUSED - P to Resume, M for Main Menu",
+                True,
+                profile["text_color"],
+            )
             screen.blit(paused_text, paused_text.get_rect(center=(SCREEN_WIDTH // 2, 300)))
         else:
+            aura_phase = shield_timer // 6
             level.draw_road(screen)
-            draw_perspective_track(screen)
+            draw_perspective_track(screen, level)
             level.draw(screen)
-            units.draw(screen)
-            leader.draw(screen)
+            units.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
+            leader.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 175))
             screen.blit(overlay, (0, 0))
-            title = title_font.render("GAME OVER", True, TEXT_COLOR)
-            final_score = menu_font.render(f"Final Score: {score}", True, TEXT_COLOR)
-            best_score = menu_font.render(f"High Score: {high_score}", True, TEXT_COLOR)
-            prompt = menu_font.render("Press R to Restart", True, TEXT_COLOR)
+            title = title_font.render("GAME OVER", True, profile["text_color"])
+            final_score = menu_font.render(f"Final Score: {score}", True, profile["text_color"])
+            best_score = menu_font.render(f"High Score: {high_score}", True, profile["text_color"])
+            prompt = menu_font.render("Press R to Restart", True, profile["text_color"])
             screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 240)))
             screen.blit(final_score, final_score.get_rect(center=(SCREEN_WIDTH // 2, 300)))
             screen.blit(best_score, best_score.get_rect(center=(SCREEN_WIDTH // 2, 335)))
