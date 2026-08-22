@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import math
+
 import pygame
 import config
 import assets
-from assets import FRAME_SIZE, SHADOW_FRAME_COUNT
+from assets import FRAME_SIZE, NECROMANCER_FRAME_SIZE, SHADOW_FRAME_COUNT
 
 from config import (
     LEADER_FOLLOW_SPEED,
-    LEADER_RADIUS,
     SCREEN_WIDTH,
     UNIT_FOLLOW_SPEED,
     UNIT_RADIUS,
@@ -148,8 +149,10 @@ class PlayerLeader:
 
     def __init__(self, position: pygame.Vector2) -> None:
         self.position = pygame.Vector2(position)
+        self.bounce_phase = 0.0
 
     def update(self, mouse_x: float, delta_time: float) -> None:
+        self.bounce_phase = (self.bounce_phase + delta_time * 7.0) % (2.0 * math.pi)
         target_x = max(50.0, min(mouse_x, 750.0))
         blend = 1.0 - pow(2.718281828, -LEADER_FOLLOW_SPEED * delta_time)
         self.position.x += (target_x - self.position.x) * blend
@@ -157,6 +160,7 @@ class PlayerLeader:
 
     def update_keyboard(self, keys: pygame.key.ScancodeWrapper, delta_time: float) -> bool:
         """Move with held left/right keys and report whether input was used."""
+        self.bounce_phase = (self.bounce_phase + delta_time * 7.0) % (2.0 * math.pi)
         left_pressed = keys[pygame.K_LEFT] or keys[pygame.K_a]
         right_pressed = keys[pygame.K_RIGHT] or keys[pygame.K_d]
         direction = int(right_pressed) - int(left_pressed)
@@ -177,19 +181,21 @@ class PlayerLeader:
         shielded: bool = False,
         aura_phase: int = 0,
     ) -> None:
-        colors = class_data()
-        pygame.draw.circle(
-            surface,
-            colors["leader_color"],
-            self.position,
-            LEADER_RADIUS,
+        necromancer_frame = assets.initialize_necromancer_frame()
+        draw_position = self.position + pygame.Vector2(
+            0.0,
+            math.sin(self.bounce_phase) * 2.0,
+        )
+        surface.blit(
+            necromancer_frame,
+            necromancer_frame.get_rect(center=draw_position),
         )
         if shielded:
             pygame.draw.circle(
                 surface,
-                colors["shield_color"],
-                self.position,
-                LEADER_RADIUS + 5 + (aura_phase % 2) * 3,
+                class_data()["shield_color"],
+                draw_position,
+                NECROMANCER_FRAME_SIZE // 2 + 5 + (aura_phase % 2) * 3,
                 width=3,
             )
 
