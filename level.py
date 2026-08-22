@@ -76,9 +76,11 @@ class LevelManager:
             gate.update(delta_time, game_speed)
         for obstacle in self.obstacles:
             obstacle.update(delta_time, game_speed)
-        self.gates[:] = [gate for gate in self.gates if gate.rect.top < SCREEN_HEIGHT]
+        self.gates[:] = [
+            gate for gate in self.gates if gate.rect.top < SCREEN_HEIGHT
+        ]
         self.obstacles[:] = [
-            obstacle for obstacle in self.obstacles if obstacle.rect.y <= SCREEN_HEIGHT
+            obstacle for obstacle in self.obstacles if obstacle.rect.top < SCREEN_HEIGHT
         ]
 
         if self.spawn_cooldown_distance <= 0.0:

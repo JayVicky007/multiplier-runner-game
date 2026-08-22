@@ -55,6 +55,30 @@ def draw_perspective_track(surface: pygame.Surface, level: LevelManager) -> None
     pygame.draw.line(surface, line_color, horizon, (SCREEN_WIDTH - 50, SCREEN_HEIGHT), width=4)
 
 
+def draw_gameplay_scene(
+    surface: pygame.Surface,
+    level: LevelManager,
+    units: PlayerUnitGroup,
+    leader: PlayerLeader,
+    shielded: bool,
+    aura_phase: int,
+    font: pygame.font.Font,
+) -> None:
+    """Draw the world first, then keep the player army in the foreground."""
+    level.draw_road(surface)
+    draw_perspective_track(surface, level)
+    level.draw(surface)
+    units.draw(surface, shielded=shielded, aura_phase=aura_phase)
+    leader.draw(surface, shielded=shielded, aura_phase=aura_phase)
+    crowd_text = font.render(
+        f"Shadows: {len(units.units)}",
+        True,
+        config.get_active_class_data()["aura_color"],
+    )
+    crowd_position = (int(leader.position.x), int(leader.position.y - 30))
+    surface.blit(crowd_text, crowd_text.get_rect(center=crowd_position))
+
+
 def run() -> None:
     pygame.init()
     pygame.display.set_caption(WINDOW_TITLE)
@@ -64,7 +88,7 @@ def run() -> None:
     title_font = pygame.font.Font(None, 58)
     menu_font = pygame.font.Font(None, 30)
 
-    leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.78))
+    leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, 550))
     units = PlayerUnitGroup(leader.position, count=12)
     level = LevelManager(font)
     running = True
@@ -85,7 +109,7 @@ def run() -> None:
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
         level.reset_difficulty()
-        leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.78))
+        leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, 550))
         units = PlayerUnitGroup(leader.position, count=1)
         score = 0
         distance_traveled = 0.0
@@ -102,7 +126,7 @@ def run() -> None:
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
         level.reset_difficulty()
-        leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.78))
+        leader = PlayerLeader(pygame.Vector2(SCREEN_WIDTH / 2, 550))
         units = PlayerUnitGroup(leader.position, count=12)
         score = 0
         distance_traveled = 0.0
@@ -241,18 +265,9 @@ def run() -> None:
             screen.blit(controls, controls.get_rect(center=(SCREEN_WIDTH // 2, 520)))
         elif game_state == "PLAYING":
             aura_phase = shield_timer // 6
-            level.draw_road(screen)
-            draw_perspective_track(screen, level)
-            level.draw(screen)
-            units.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
-            leader.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
-            crowd_text = font.render(
-                f"Shadows: {len(units.units)}",
-                True,
-                profile["aura_color"],
+            draw_gameplay_scene(
+                screen, level, units, leader, shield_timer > 0, aura_phase, font
             )
-            crowd_position = (int(leader.position.x), int(leader.position.y - 30))
-            screen.blit(crowd_text, crowd_text.get_rect(center=crowd_position))
             hud_text = font.render(
                 f"Distance: {int(distance_traveled)}m | Score: {score} (HI: {high_score})",
                 True,
@@ -269,11 +284,9 @@ def run() -> None:
                 screen.blit(shield_text, (28, 52))
         elif game_state == "PAUSED":
             aura_phase = shield_timer // 6
-            level.draw_road(screen)
-            draw_perspective_track(screen, level)
-            level.draw(screen)
-            units.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
-            leader.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
+            draw_gameplay_scene(
+                screen, level, units, leader, shield_timer > 0, aura_phase, font
+            )
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 175))
             screen.blit(overlay, (0, 0))
@@ -285,11 +298,9 @@ def run() -> None:
             screen.blit(paused_text, paused_text.get_rect(center=(SCREEN_WIDTH // 2, 300)))
         else:
             aura_phase = shield_timer // 6
-            level.draw_road(screen)
-            draw_perspective_track(screen, level)
-            level.draw(screen)
-            units.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
-            leader.draw(screen, shielded=shield_timer > 0, aura_phase=aura_phase)
+            draw_gameplay_scene(
+                screen, level, units, leader, shield_timer > 0, aura_phase, font
+            )
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 175))
             screen.blit(overlay, (0, 0))
