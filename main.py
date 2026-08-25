@@ -12,6 +12,8 @@ from config import (
     SCREEN_WIDTH,
     WINDOW_TITLE,
     create_window,
+    get_crowd_power,
+    resolve_battle,
 )
 from level import LevelManager
 from sprites import PlayerLeader, PlayerUnitGroup
@@ -98,13 +100,15 @@ def run() -> None:
     high_score = load_high_score()
     obstacle_contact_frames = 0
     shield_timer = 0
+    combat_message = ""
+    combat_message_timer = 0
     center_fork_locked = False
     control_mode = "KEYBOARD"
 
     def reset_game() -> None:
         nonlocal leader, units, game_state, score, distance_traveled, shield_timer
         nonlocal center_fork_locked
-        nonlocal obstacle_contact_frames
+        nonlocal obstacle_contact_frames, combat_message, combat_message_timer
         level.gates.clear()
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
@@ -115,13 +119,15 @@ def run() -> None:
         distance_traveled = 0.0
         obstacle_contact_frames = 0
         shield_timer = 0
+        combat_message = ""
+        combat_message_timer = 0
         center_fork_locked = False
         game_state = "PLAYING"
 
     def return_to_menu() -> None:
         nonlocal leader, units, game_state, score, distance_traveled, shield_timer
         nonlocal center_fork_locked
-        nonlocal obstacle_contact_frames
+        nonlocal obstacle_contact_frames, combat_message, combat_message_timer
         level.gates.clear()
         level.obstacles.clear()
         level.spawn_cooldown_distance = 0.0
@@ -132,6 +138,8 @@ def run() -> None:
         distance_traveled = 0.0
         obstacle_contact_frames = 0
         shield_timer = 0
+        combat_message = ""
+        combat_message_timer = 0
         center_fork_locked = False
         game_state = "MENU"
 
@@ -172,8 +180,11 @@ def run() -> None:
         if game_state == "PLAYING":
             if shield_timer > 0:
                 shield_timer -= 1
+            if combat_message_timer > 0:
+                combat_message_timer -= 1
             distance_traveled += 1.0
-            score += 1 + (len(units.units) // 5)
+            _, crowd_multiplier = get_crowd_power(len(units.units))
+            score += 1 + (len(units.units) // 3) + (crowd_multiplier - 1) * 2
             if score > high_score:
                 high_score = score
             if control_mode == "KEYBOARD":
@@ -220,20 +231,24 @@ def run() -> None:
                 )
             ]
             obstacle_contact = bool(collided_obstacles)
-            if shield_timer > 0 and collided_obstacles:
-                level.obstacles.remove(collided_obstacles[0])
-                shield_timer = 0
+            if obstacle_contact:
+                enemy = collided_obstacles[0]
+                level.obstacles.remove(enemy)
+                if shield_timer > 0:
+                    shield_timer = 0
+                    combat_message = "SHIELD BREAKS THROUGH"
+                else:
+                    battle_won, survivors = resolve_battle(len(units.units), enemy.power)
+                    units.remove_units(len(units.units) - survivors)
+                    if battle_won:
+                        score += enemy.reward
+                        high_score = max(high_score, score)
+                        combat_message = f"DEFEATED RANK {enemy.rank}  +{enemy.reward}"
+                    else:
+                        combat_message = f"RANK {enemy.rank} BREAKS THROUGH"
+                combat_message_timer = FPS * 2
                 obstacle_contact = False
                 obstacle_contact_frames = 0
-            elif obstacle_contact:
-                obstacle_contact_frames += 1
-                push_speed = max(
-                    (obstacle.current_speed for obstacle in level.obstacles),
-                    default=0.0,
-                )
-                leader.apply_push_back(push_speed, delta_time)
-                if obstacle_contact_frames % 5 == 0:
-                    units.remove_units(1)
             else:
                 obstacle_contact_frames = 0
 
@@ -274,6 +289,13 @@ def run() -> None:
                 profile["text_color"],
             )
             screen.blit(hud_text, (28, 28))
+            power_name, crowd_multiplier = get_crowd_power(len(units.units))
+            power_text = font.render(
+                f"Army: {len(units.units)} | Power: {power_name} {crowd_multiplier}x",
+                True,
+                profile["aura_color"],
+            )
+            screen.blit(power_text, (28, 52))
             if shield_timer > 0:
                 shield_text = font.render(
                     f"{config.CLASS_DATA[config.active_class]['shield_name'].upper()} ACTIVE: "
@@ -281,7 +303,13 @@ def run() -> None:
                     True,
                     profile["shield_color"],
                 )
-                screen.blit(shield_text, (28, 52))
+                screen.blit(shield_text, (28, 76))
+            if combat_message_timer > 0:
+                combat_text = font.render(combat_message, True, (255, 220, 140))
+                screen.blit(
+                    combat_text,
+                    combat_text.get_rect(center=(SCREEN_WIDTH // 2, 92)),
+                )
         elif game_state == "PAUSED":
             aura_phase = shield_timer // 6
             draw_gameplay_scene(

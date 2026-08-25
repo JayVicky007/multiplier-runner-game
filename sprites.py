@@ -7,10 +7,17 @@ import math
 import pygame
 import config
 import assets
-from assets import FRAME_SIZE, NECROMANCER_FRAME_SIZE, SHADOW_FRAME_COUNT
+from assets import (
+    FRAME_SIZE,
+    NECROMANCER_FRAME_COUNT,
+    NECROMANCER_FRAME_SIZE,
+    SHADOW_FRAME_COUNT,
+)
 
 from config import (
     LEADER_FOLLOW_SPEED,
+    MAX_CROWD_SIZE,
+    SCREEN_HEIGHT,
     SCREEN_WIDTH,
     UNIT_FOLLOW_SPEED,
     UNIT_RADIUS,
@@ -28,6 +35,13 @@ MIN_DEPTH_SCALE = 0.1
 VANISHING_POINT_X = 400.0
 LANE_HALF_WIDTH = 250.0
 SCALED_SHADOW_SPRITES: dict[tuple[int, int], pygame.Surface] = {}
+
+
+def formation_offset(index: int) -> pygame.Vector2:
+    """Return a compact crowd offset that stays visible behind the leader."""
+    row = index // 4
+    column = index % 4 - 1.5
+    return pygame.Vector2(column * 26.0, row * 16.0 + 8.0)
 
 
 def depth_scale(y: float) -> float:
@@ -79,6 +93,8 @@ class MathGate:
             symbol = "+"
         if gate_type == "multiply":
             symbol = "x"
+        if gate_type == "divide":
+            symbol = "/"
         text = "" if gate_type == "shield" else f"{symbol}{value}"
         self.text_surface = font.render(text, True, class_data()["text_color"])
         self._project_rect()
@@ -97,8 +113,22 @@ class MathGate:
         self.rect.center = (center_x, int(self.world_y))
 
     def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.rect(surface, self.color, self.rect, border_radius=6)
+        if self.gate_type == "multiply":
+            gate_color = (61, 157, 226)
+        elif self.gate_type == "divide":
+            gate_color = (235, 157, 64)
+        elif self.gate_type == "shield":
+            gate_color = class_data()["shield_color"]
+        else:
+            gate_color = (53, 190, 218) if self.value >= 0 else (225, 90, 90)
+        shadow_rect = self.rect.move(0, max(2, self.rect.height // 8))
+        pygame.draw.rect(surface, (12, 18, 28), shadow_rect, border_radius=6)
+        pygame.draw.rect(surface, gate_color, self.rect, border_radius=6)
+        highlight = pygame.Rect(self.rect.left + 2, self.rect.top + 2, max(1, self.rect.width - 4), max(1, self.rect.height // 5))
+        pygame.draw.rect(surface, (150, 225, 255), highlight, border_radius=4)
+        pygame.draw.rect(surface, (224, 241, 255), self.rect, width=max(1, int(self.rect.width * 0.025)), border_radius=6)
         if self.gate_type == "shield":
+            pygame.draw.circle(surface, (255, 235, 130), self.rect.center, max(2, self.rect.width // 8), width=2)
             return
         scale = depth_scale(self.world_y)
         text_size = (
@@ -112,13 +142,16 @@ class MathGate:
 class Obstacle:
     """A simple red track hazard that scrolls toward the player."""
 
-    def __init__(self, rect: pygame.Rect, lane: int) -> None:
+    def __init__(self, rect: pygame.Rect, lane: int, rank: int = 1) -> None:
         self.rect = rect
         self.world_y = float(rect.y)
         self.base_size = rect.size
         self.lane = lane
+        self.rank = max(1, min(rank, 3))
+        self.damage = self.rank
+        self.power, self.reward = ((5, 50), (20, 250), (50, 750))[self.rank - 1]
         self.vanishing_point_x = VANISHING_POINT_X
-        self.color = (225, 90, 90)
+        self.color = ((225, 90, 90), (235, 145, 55), (190, 72, 205))[self.rank - 1]
         self.animation_frame = 0
         self.current_speed = 0.0
         self.passed_player = False
@@ -126,7 +159,11 @@ class Obstacle:
 
     def update(self, delta_time: float, scroll_speed: float) -> None:
         self.animation_frame = (self.animation_frame + 1) % 2
-        self.color = (225, 90, 90) if self.animation_frame == 0 else (255, 125, 105)
+        rank_colors = ((225, 90, 90), (235, 145, 55), (190, 72, 205))
+        base_color = rank_colors[self.rank - 1]
+        self.color = base_color if self.animation_frame == 0 else tuple(
+            min(255, value + 30) for value in base_color
+        )
         scale = depth_scale(self.world_y)
         self.current_speed = scroll_speed * (0.35 + 0.65 * scale)
         self.world_y += self.current_speed * delta_time
@@ -141,7 +178,24 @@ class Obstacle:
         self.rect.center = (center_x, int(self.world_y))
 
     def draw(self, surface: pygame.Surface) -> None:
+        shadow_rect = self.rect.move(0, max(2, self.rect.height // 8))
+        pygame.draw.rect(surface, (12, 18, 28), shadow_rect, border_radius=6)
         pygame.draw.rect(surface, self.color, self.rect, border_radius=6)
+        pygame.draw.rect(
+            surface,
+            (255, 220, 180),
+            self.rect,
+            width=max(1, self.rect.width // 30),
+            border_radius=6,
+        )
+        for index in range(self.rank):
+            marker = pygame.Rect(
+                self.rect.left + 4 + index * max(3, self.rect.width // 12),
+                self.rect.top + 4,
+                max(2, self.rect.width // 18),
+                max(2, self.rect.height // 10),
+            )
+            pygame.draw.rect(surface, (255, 245, 210), marker, border_radius=1)
 
 
 class PlayerLeader:
@@ -181,15 +235,32 @@ class PlayerLeader:
         shielded: bool = False,
         aura_phase: int = 0,
     ) -> None:
-        necromancer_frame = assets.initialize_necromancer_frame()
+        necromancer_frame = assets.initialize_necromancer_frames()[
+            int(self.bounce_phase / (2.0 * math.pi) * NECROMANCER_FRAME_COUNT)
+            % NECROMANCER_FRAME_COUNT
+        ]
         draw_position = self.position + pygame.Vector2(
             0.0,
             math.sin(self.bounce_phase) * 2.0,
+        )
+        pygame.draw.ellipse(
+            surface,
+            (10, 8, 18),
+            pygame.Rect(int(draw_position.x - 18), int(self.position.y + 12), 36, 9),
         )
         surface.blit(
             necromancer_frame,
             necromancer_frame.get_rect(center=draw_position),
         )
+        for offset in (-1, 1):
+            wisp_x = draw_position.x + offset * (15 + (aura_phase % 3) * 2)
+            wisp_y = draw_position.y - 7 + math.sin(self.bounce_phase + offset) * 5
+            pygame.draw.circle(
+                surface,
+                class_data()["aura_color"],
+                (int(wisp_x), int(wisp_y)),
+                2,
+            )
         if shielded:
             pygame.draw.circle(
                 surface,
@@ -213,6 +284,8 @@ class PlayerUnit:
         target = leader_position + self.offset
         blend = 1.0 - pow(2.718281828, -UNIT_FOLLOW_SPEED * delta_time)
         self.position += (target - self.position) * blend
+        self.position.x = max(FRAME_SIZE / 2, min(self.position.x, SCREEN_WIDTH - FRAME_SIZE / 2))
+        self.position.y = max(FRAME_SIZE / 2, min(self.position.y, SCREEN_HEIGHT - FRAME_SIZE / 2))
         self.animation_timer += 1
         if self.animation_timer >= 6:
             self.animation_timer = 0
@@ -228,6 +301,16 @@ class PlayerUnit:
         scale = depth_scale(self.position.y)
         sprite_size = max(1, int(FRAME_SIZE * scale))
         scaled_sprite = get_scaled_shadow_sprite(self.animation_frame, sprite_size)
+        pygame.draw.ellipse(
+            surface,
+            (10, 8, 18),
+            pygame.Rect(
+                int(self.position.x - max(3, sprite_size // 2)),
+                int(self.position.y + max(2, sprite_size // 3)),
+                max(6, sprite_size),
+                max(2, sprite_size // 3),
+            ),
+        )
         surface.blit(scaled_sprite, scaled_sprite.get_rect(center=self.position))
         if shielded:
             pygame.draw.circle(
@@ -244,10 +327,8 @@ class PlayerUnitGroup:
 
     def __init__(self, leader_position: pygame.Vector2, count: int) -> None:
         self.units: list[PlayerUnit] = []
-        for index in range(count):
-            row = index // 4 + 1
-            column = index % 4 - 1.5
-            offset = pygame.Vector2(column * 26.0, row * 25.0)
+        for index in range(min(max(0, count), MAX_CROWD_SIZE)):
+            offset = formation_offset(index)
             self.units.append(PlayerUnit(leader_position + offset, offset))
 
     def update(self, leader_position: pygame.Vector2, delta_time: float) -> None:
@@ -256,11 +337,10 @@ class PlayerUnitGroup:
 
     def add_units(self, amount: int, leader_position: pygame.Vector2) -> None:
         start_index = len(self.units)
-        for index in range(max(0, amount)):
+        available_slots = max(0, MAX_CROWD_SIZE - start_index)
+        for index in range(min(max(0, amount), available_slots)):
             unit_index = start_index + index
-            row = unit_index // 4 + 1
-            column = unit_index % 4 - 1.5
-            offset = pygame.Vector2(column * 26.0, row * 25.0)
+            offset = formation_offset(unit_index)
             self.units.append(PlayerUnit(leader_position + offset, offset))
 
     def remove_units(self, amount: int) -> None:
@@ -275,6 +355,9 @@ class PlayerUnitGroup:
                 self.remove_units(-gate.value)
         elif gate.gate_type == "multiply" and gate.value > 1:
             self.add_units(len(self.units) * (gate.value - 1), leader_position)
+        elif gate.gate_type == "divide" and gate.value > 1:
+            target_count = max(1, len(self.units) // gate.value)
+            self.remove_units(len(self.units) - target_count)
 
     def draw(
         self,

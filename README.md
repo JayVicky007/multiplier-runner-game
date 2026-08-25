@@ -40,9 +40,18 @@ The two input modes are isolated, so inactive input devices do not affect the pl
 
 - Modular architecture using `config.py`, `assets.py`, `sprites.py`, `level.py`, and `main.py`.
 - Procedural four-frame pixel-art sprite sheets for animated Shadow Soldiers.
+- Larger animated necromancer sprite with staff, cloak sway, magic wisps, and ground shadows.
+- Tiled perspective runway with bright rails and depth-separated lane presentation.
+- Beveled arithmetic portals with distinct positive, negative, multiplier, and shield colors.
 - Perspective-scaled crowd sprites with smoky details and pulsing obstacle colors.
 - Vector-based crowd following with arithmetic gates.
 - Positive and negative gates with linked pairs that prevent double collection.
+- Rare `x2` and `x3` multiplier gates that scale the current crowd.
+- `/2` and `/3` division gates that remove a proportional part of the crowd while preserving one unit.
+- Crowd growth is capped at 256 units to keep frame-time stable during long runs.
+- Army power tiers make large crowds visibly stronger and add bonus score while running.
+- Ranked enemies appear as common barriers, elite amber barriers, and champion violet barriers; stronger ranks cost more soldiers on contact.
+- Enemy contact now resolves as a single battle: victories cause light attrition and award points, while defeats cause heavy attrition without an automatic game over.
 - Rare purple `RULER'S AUTHORITY` gates that grant five seconds of protection.
 - Shield protection absorbs one obstacle or red-gate hit without reducing the crowd.
 - A flashing purple aura and HUD countdown show when the shield is active.
@@ -59,6 +68,7 @@ The two input modes are isolated, so inactive input devices do not affect the pl
 - Continuous obstacle contact damage and leader push-back physics.
 - Main menu, pause, restart, and game-over states.
 - Score, distance, crowd multiplier, near-miss bonuses, and persistent high score.
+- Larger crowds increase the distance score more quickly, making growth valuable beyond survival.
 - Fixed HUD showing distance, score, and high score.
 - Difficulty increases by 8% every 15 seconds, capped at twice the starting speed.
 
@@ -110,4 +120,11 @@ Runs the Pygame loop, state transitions, input selection, shield timing, branchi
 
 ## Validation
 
-The project has been checked with Python compilation, diagnostics, and headless smoke tests covering movement boundaries, lane projection, spawning spacing, gate arithmetic, obstacle collisions, scoring, state transitions, sprite-sheet dimensions, animation cadence, perspective scaling, and obstacle pulse colors.
+The project has been checked with Python compilation, diagnostics, and headless smoke tests covering movement boundaries, lane projection, spawning spacing, additive and multiplier gate arithmetic, obstacle collisions, scoring, state transitions, sprite-sheet dimensions, animation cadence, perspective scaling, and obstacle pulse colors.
+
+Run the focused gameplay tests with:
+
+```powershell
+$env:SDL_VIDEODRIVER = "dummy"
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```

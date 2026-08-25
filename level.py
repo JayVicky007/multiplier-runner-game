@@ -118,6 +118,15 @@ class LevelManager:
         shield_lane = random.choice((0, 1)) if random.random() < 0.1 else None
         left_gate_type = "shield" if shield_lane == 0 else "add"
         right_gate_type = "shield" if shield_lane == 1 else "add"
+        if shield_lane is None and random.random() < 0.5:
+            multiplier_index = random.choice((0, 1))
+            multiplier_value = random.choice((2, 3))
+            if multiplier_index == 0:
+                left_gate_type = "multiply" if random.random() < 0.5 else "divide"
+                left_value = multiplier_value
+            else:
+                right_gate_type = "multiply" if random.random() < 0.5 else "divide"
+                right_value = multiplier_value
         self.gates.extend(
             (
                 MathGate(
@@ -153,23 +162,68 @@ class LevelManager:
         elif self.track_phase == "NORMAL" and random.random() < 0.4:
             empty_lane = ({-1, 0, 1} - set(gate_lanes)).pop()
             self.obstacles.append(
-                Obstacle(pygame.Rect(0, y, lane_width, gate_height), lane=empty_lane)
+                Obstacle(
+                    pygame.Rect(0, y, lane_width, gate_height),
+                    lane=empty_lane,
+                    rank=random.choices((1, 2, 3), weights=(70, 25, 5))[0],
+                )
             )
 
-    def spawn_obstacle(self, lane: int | None = None) -> None:
+    def spawn_obstacle(self, lane: int | None = None, rank: int = 1) -> None:
         lane_width = 180
         lane = random.choice((-1, 0, 1)) if lane is None else lane
         x = 0
         y = int(HORIZON_Y)
-        self.obstacles.append(Obstacle(pygame.Rect(x, y, lane_width, 64), lane=lane))
+        self.obstacles.append(
+            Obstacle(pygame.Rect(x, y, lane_width, 64), lane=lane, rank=rank)
+        )
 
     def draw_road(self, surface: pygame.Surface) -> None:
-        road_rect = pygame.Rect(16, 16, SCREEN_WIDTH - 32, SCREEN_HEIGHT - 32)
-        pygame.draw.rect(surface, (29, 38, 49), road_rect)
-        for y in range(-60, SCREEN_HEIGHT, 60):
-            marker_y = int(y + self.road_offset)
-            pygame.draw.rect(surface, (80, 91, 102), (SCREEN_WIDTH // 2 - 3, marker_y, 6, 30))
-        pygame.draw.rect(surface, (110, 120, 126), road_rect, width=2)
+        surface.fill((12, 18, 28))
+        horizon = HORIZON_Y
+        vanishing_x = SCREEN_WIDTH // 2
+        road_top_width = 72
+        road_bottom_width = SCREEN_WIDTH - 56
+        pygame.draw.polygon(
+            surface,
+            (35, 44, 57),
+            (
+                (vanishing_x - road_top_width, horizon),
+                (vanishing_x + road_top_width, horizon),
+                (vanishing_x + road_bottom_width, SCREEN_HEIGHT),
+                (vanishing_x - road_bottom_width, SCREEN_HEIGHT),
+            ),
+        )
+        segment_height = 54
+        for index in range(-1, SCREEN_HEIGHT // segment_height + 2):
+            top_y = max(horizon, index * segment_height + self.road_offset)
+            bottom_y = min(SCREEN_HEIGHT, top_y + segment_height)
+            if bottom_y <= horizon:
+                continue
+            top_progress = (top_y - horizon) / (SCREEN_HEIGHT - horizon)
+            bottom_progress = (bottom_y - horizon) / (SCREEN_HEIGHT - horizon)
+            top_half_width = road_top_width + (road_bottom_width - road_top_width) * top_progress
+            bottom_half_width = road_top_width + (road_bottom_width - road_top_width) * bottom_progress
+            tile_color = (43, 53, 67) if index % 2 == 0 else (38, 48, 61)
+            pygame.draw.polygon(
+                surface,
+                tile_color,
+                (
+                    (int(vanishing_x - top_half_width), int(top_y)),
+                    (int(vanishing_x + top_half_width), int(top_y)),
+                    (int(vanishing_x + bottom_half_width), int(bottom_y)),
+                    (int(vanishing_x - bottom_half_width), int(bottom_y)),
+                ),
+            )
+            pygame.draw.line(
+                surface,
+                (71, 82, 96),
+                (int(vanishing_x - bottom_half_width), int(bottom_y)),
+                (int(vanishing_x + bottom_half_width), int(bottom_y)),
+                width=2,
+            )
+        pygame.draw.line(surface, (118, 132, 146), (vanishing_x - road_top_width, int(horizon)), (vanishing_x - road_bottom_width, SCREEN_HEIGHT), width=4)
+        pygame.draw.line(surface, (118, 132, 146), (vanishing_x + road_top_width, int(horizon)), (vanishing_x + road_bottom_width, SCREEN_HEIGHT), width=4)
 
     def draw(self, surface: pygame.Surface) -> None:
         for gate in self.gates:

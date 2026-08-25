@@ -7,11 +7,13 @@ FRAME_SIZE = 16
 SHADOW_FRAME_COUNT = 4
 SHADOW_FRAMES: list[pygame.Surface] = []
 SHADOW_SPRITE_SHEET: pygame.Surface | None = None
-NECROMANCER_FRAME_SIZE = 24
+NECROMANCER_FRAME_COUNT = 4
+NECROMANCER_FRAME_SIZE = 32
+NECROMANCER_FRAMES: list[pygame.Surface] = []
 NECROMANCER_FRAME: pygame.Surface | None = None
 
 
-def generate_necromancer_frame() -> pygame.Surface:
+def generate_necromancer_frame(frame_index: int = 0) -> pygame.Surface:
     """Build the full-size pixel-art frame for the necromancer leader."""
     frame = pygame.Surface(
         (NECROMANCER_FRAME_SIZE, NECROMANCER_FRAME_SIZE),
@@ -24,21 +26,25 @@ def generate_necromancer_frame() -> pygame.Surface:
     hood_color = (57, 27, 72, 255)
     eye_color = (224, 92, 255, 255)
     eye_glow = (150, 52, 198, 210)
+    sway = (0, 1, 0, -1)[frame_index % NECROMANCER_FRAME_COUNT]
+    staff_x = 25 + sway
 
-    pygame.draw.rect(frame, cloak_edge, (6, 7, 12, 2))
-    pygame.draw.rect(frame, hood_color, (5, 4, 14, 7))
-    pygame.draw.rect(frame, hood_shadow, (7, 6, 10, 5))
-    pygame.draw.rect(frame, eye_glow, (8, 8, 2, 2))
-    pygame.draw.rect(frame, eye_glow, (14, 8, 2, 2))
-    pygame.draw.rect(frame, eye_color, (9, 8, 1, 1))
-    pygame.draw.rect(frame, eye_color, (14, 8, 1, 1))
-    pygame.draw.rect(frame, cloak_color, (5, 10, 14, 9))
-    pygame.draw.rect(frame, cloak_shadow, (3, 14, 18, 5))
-    pygame.draw.rect(frame, cloak_edge, (4, 18, 4, 3))
-    pygame.draw.rect(frame, cloak_edge, (16, 18, 4, 3))
-    pygame.draw.rect(frame, cloak_shadow, (2, 21, 8, 2))
-    pygame.draw.rect(frame, cloak_shadow, (14, 21, 8, 2))
-    pygame.draw.rect(frame, cloak_edge, (10, 12, 4, 2))
+    pygame.draw.rect(frame, cloak_shadow, (7, 22, 18, 7))
+    pygame.draw.rect(frame, cloak_edge, (8, 9, 16, 3))
+    pygame.draw.rect(frame, hood_color, (7, 6, 18, 11))
+    pygame.draw.rect(frame, hood_shadow, (10, 9, 13, 8))
+    pygame.draw.rect(frame, eye_glow, (11, 11, 3, 3))
+    pygame.draw.rect(frame, eye_glow, (19, 11, 3, 3))
+    pygame.draw.rect(frame, eye_color, (12, 12, 2, 2))
+    pygame.draw.rect(frame, eye_color, (19, 12, 2, 2))
+    pygame.draw.rect(frame, cloak_edge, (5, 17, 22, 3))
+    pygame.draw.rect(frame, cloak_color, (7, 19, 18, 9))
+    pygame.draw.rect(frame, cloak_shadow, (4, 24, 24, 5))
+    pygame.draw.rect(frame, cloak_edge, (6 + sway, 27, 6, 3))
+    pygame.draw.rect(frame, cloak_edge, (20 + sway, 27, 6, 3))
+    pygame.draw.line(frame, cloak_edge, (staff_x, 7), (staff_x, 29), width=2)
+    pygame.draw.rect(frame, eye_color, (staff_x - 2, 4, 5, 3))
+    pygame.draw.rect(frame, eye_glow, (staff_x - 1, 3, 3, 1))
 
     if pygame.display.get_surface() is not None:
         frame = frame.convert_alpha()
@@ -53,6 +59,18 @@ def initialize_necromancer_frame() -> pygame.Surface:
     if pygame.display.get_surface() is None:
         raise RuntimeError("pygame display must be initialized before loading sprites")
     return NECROMANCER_FRAME
+
+
+def initialize_necromancer_frames() -> list[pygame.Surface]:
+    """Generate and cache the animated leader frames after display setup."""
+    if NECROMANCER_FRAMES:
+        return NECROMANCER_FRAMES
+    for frame_index in range(NECROMANCER_FRAME_COUNT):
+        frame = generate_necromancer_frame(frame_index)
+        NECROMANCER_FRAMES.append(
+            frame.convert_alpha() if pygame.display.get_surface() is not None else frame
+        )
+    return NECROMANCER_FRAMES
 
 
 def generate_shadow_sprite_sheet() -> pygame.Surface:
